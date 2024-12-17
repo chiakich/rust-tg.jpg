@@ -57,7 +57,7 @@ $ rustup override set nightly
 ## Usage
 
 - Start the bot on Telegram by searching for your bot's username and sending a message with an image file name (e.g., `example.jpg`).
-- The bot will respond with the first two image results it finds.
+- The bot will respond with the first possible image result it finds.
 
 ## Dependencies
 
