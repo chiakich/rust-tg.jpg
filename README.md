@@ -1,8 +1,12 @@
 # rust-tg.jpg
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/akira02/rust-tg.jpg/fly-deploy.yml)
 
-Sometimes words aren't enough to express your emotions, and searching for stickers or GIFs can be a hassle. Try tg.jpg! Like Google's "I'm Feeling Lucky" but for images, this bot will instantly reply with the first image it finds on Google. "mic drop.gif"!
+Sometimes words aren't enough to express your emotions, and searching for stickers or GIFs can be a hassle.  
+Try tg.jpg! It's like Google's "I'm Feeling Lucky" but for images, this bot will instantly reply with the first image it finds on Google.  
+"mic drop.gif"!  
 
-This project is a Telegram bot that searches for images based on user input. It uses the Teloxide library for interacting with the Telegram Bot API and performs image searches using Google's image search.
+<img width="554" alt="image" src="https://github.com/user-attachments/assets/2bedf066-e1ee-4354-92d0-ca2e2c39e73e" />
+
 
 ## Features
 
