@@ -11,7 +11,6 @@ use url::Url;
 async fn main() {
   pretty_env_logger::init();
   info!("Starting image search bot...");
-
   let bot = Bot::from_env();
 
   teloxide::repl(bot, move |bot: Bot, msg: Message| async move {
@@ -98,20 +97,35 @@ async fn image_search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::
     .await?;
 
   let html = res.text().await?;
-  Ok(extract_image_urls(&html))
+  let urls = extract_image_urls(&html);
+  if urls.is_empty() {
+    return Err(anyhow::anyhow!(
+      "Img array is empty. It might be because Google changed the search html format."
+    ));
+  }
+  Ok(urls)
 }
 
 fn extract_image_urls(text: &str) -> Vec<String> {
   let mut urls = Vec::new();
-  let data_ou_regex = regex::Regex::new(r#"data-ou="(.*?)""#).unwrap();
 
-  for cap in data_ou_regex.captures_iter(text).take(10) {
+  let imgres_regex = regex::Regex::new(r#"/imgres\?imgurl=(.*?)(?:&|$)"#).unwrap();
+  for cap in imgres_regex.captures_iter(text).take(10) {
     if let Some(url_match) = cap.get(1) {
       let decoded_url = urlencoding::decode(url_match.as_str())
         .unwrap_or_default()
         .into_owned();
       let clean_url = decoded_url.split('?').next().unwrap_or("").to_string();
       urls.push(clean_url);
+    }
+  }
+  // fallback using data-ou
+  if urls.is_empty() {
+    let data_ou_regex = regex::Regex::new(r#"data-ou="(.*?)""#).unwrap();
+    for cap in data_ou_regex.captures_iter(text).take(10) {
+      if let Some(url_match) = cap.get(1) {
+        urls.push(url_match.as_str().to_string());
+      }
     }
   }
   urls
