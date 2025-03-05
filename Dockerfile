@@ -19,4 +19,5 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates
 RUN update-ca-certificates
 COPY --from=builder /app/target/release/tgjpg-rs /usr/local/bin
+COPY --from=builder /app/src/assets src/assets
 ENTRYPOINT ["/usr/local/bin/tgjpg-rs"]
