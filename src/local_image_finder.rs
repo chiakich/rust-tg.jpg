@@ -37,6 +37,32 @@ pub async fn find_local_image(text: &str) -> Result<Option<PathBuf>, anyhow::Err
   Ok(None)
 }
 
+// Find all matching images for inline query results
+pub async fn find_matching_images(text: &str) -> Result<Vec<(PathBuf, usize)>, anyhow::Error> {
+  let assets_dir = Path::new(ASSETS_DIR);
+
+  // Check if assets directory exists
+  if !assets_dir.exists() {
+    error!("Assets directory not found: {}", ASSETS_DIR);
+    return Ok(Vec::new());
+  }
+
+  // Normalize the input text for fuzzy matching
+  let normalized_text = normalize_text(text);
+
+  // Store potential matches with their scores
+  let mut matches: Vec<(PathBuf, usize)> = Vec::new();
+
+  // Collect all image files from the assets directory and its subdirectories
+  collect_potential_matches(assets_dir, &normalized_text, &mut matches)?;
+
+  // Sort matches by score (highest first)
+  matches.sort_by(|a, b| b.1.cmp(&a.1));
+
+  // Return all matches
+  Ok(matches)
+}
+
 // Helper function to collect potential matches from the assets directory
 fn collect_potential_matches(
   dir: &Path,

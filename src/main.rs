@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::InputFile;
-use teloxide::RequestError;
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -16,6 +15,10 @@ use local_image_finder::find_local_image;
 // Import the Google image search module
 mod google_image_searcher;
 use google_image_searcher::search as google_image_search;
+
+// Import the inline query handler module
+mod inline_query_handler;
+use inline_query_handler::{handle_chosen_inline_result, handle_inline_query};
 
 // Define a type for our chat settings
 type ChatSettings = Arc<Mutex<HashMap<ChatId, bool>>>;
@@ -29,22 +32,23 @@ async fn main() {
   // Initialize chat settings (mygo mode disabled by default)
   let chat_settings: ChatSettings = Arc::new(Mutex::new(HashMap::new()));
 
-  teloxide::repl(bot, move |bot: Bot, msg: Message| {
-    let chat_settings = Arc::clone(&chat_settings);
-    async move {
-      if let Err(e) = handle_message(&bot, &msg, &chat_settings).await {
-        error!("Error handling message: {:?}", e);
-      }
-      Ok::<(), RequestError>(())
-    }
-  })
-  .await;
+  let handler = dptree::entry()
+    .branch(Update::filter_message().endpoint(message_handler))
+    .branch(Update::filter_inline_query().endpoint(handle_inline_query))
+    .branch(Update::filter_chosen_inline_result().endpoint(handle_chosen_inline_result));
+
+  Dispatcher::builder(bot, handler)
+    .dependencies(dptree::deps![chat_settings])
+    .enable_ctrlc_handler()
+    .build()
+    .dispatch()
+    .await;
 }
 
-async fn handle_message(
-  bot: &Bot,
-  msg: &Message,
-  chat_settings: &ChatSettings,
+async fn message_handler(
+  bot: Bot,
+  msg: Message,
+  chat_settings: ChatSettings,
 ) -> Result<(), anyhow::Error> {
   let text = match msg.text() {
     Some(text) => text,
@@ -53,7 +57,7 @@ async fn handle_message(
 
   // Handle commands
   if text.starts_with('/') {
-    return handle_command(bot, msg, chat_settings).await;
+    return handle_command(&bot, &msg, &chat_settings).await;
   }
 
   // Check if mygo mode is enabled for this chat
@@ -157,7 +161,8 @@ async fn handle_command(
          See https://github.com/akira02/rust-tg.jpg for more information.\n\
          Use /enable_mygo to enable mygo mode\n\
          Use /disable_mygo to disable mygo mode\n\
-         Use /status to check current settings",
+         Use /status to check current settings\n\n\
+         You can also use me in any chat by typing @botname followed by your search term!",
         )
         .await?;
     }
