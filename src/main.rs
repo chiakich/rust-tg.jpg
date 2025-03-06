@@ -26,7 +26,7 @@ async fn main() {
   info!("Starting image search bot...");
   let bot = Bot::from_env();
 
-  // Initialize chat settings (local search enabled by default)
+  // Initialize chat settings (mygo mode disabled by default)
   let chat_settings: ChatSettings = Arc::new(Mutex::new(HashMap::new()));
 
   teloxide::repl(bot, move |bot: Bot, msg: Message| {
@@ -56,14 +56,14 @@ async fn handle_message(
     return handle_command(bot, msg, chat_settings).await;
   }
 
-  // Check if local search is enabled for this chat
-  let local_search_enabled = {
+  // Check if mygo mode is enabled for this chat
+  let mygo_enabled = {
     let settings = chat_settings.lock().await;
-    *settings.get(&msg.chat.id).unwrap_or(&true) // Default to enabled
+    *settings.get(&msg.chat.id).unwrap_or(&false) // Default to disabled
   };
 
-  // Try to find a local image if local search is enabled
-  if local_search_enabled {
+  // Try to find a local image if mygo mode is enabled
+  if mygo_enabled {
     if let Some(local_image) = find_local_image(text).await? {
       info!("Found local image: {:?}", local_image);
 
@@ -155,23 +155,25 @@ async fn handle_command(
           msg.chat.id,
           "Welcome! I can support images on google or from local collection.\n\
          See https://github.com/akira02/rust-tg.jpg for more information.\n\
-         Use /enable_local to enable local image search\n\
-         Use /disable_local to disable local image search\n\
+         Use /enable_mygo to enable mygo mode\n\
+         Use /disable_mygo to disable mygo mode\n\
          Use /status to check current settings",
         )
         .await?;
     }
-    "/enable_local" => {
+    "/enable_mygo" => {
       {
         let mut settings = chat_settings.lock().await;
         settings.insert(msg.chat.id, true);
       }
-      bot.send_message(
-        msg.chat.id,
-        "Local image search has been enabled! I will now search for images in my local collection."
-      ).await?;
+      bot
+        .send_message(
+          msg.chat.id,
+          "Mygo mode has been enabled! I will now search for images in my local collection.",
+        )
+        .await?;
     }
-    "/disable_local" => {
+    "/disable_mygo" => {
       {
         let mut settings = chat_settings.lock().await;
         settings.insert(msg.chat.id, false);
@@ -179,20 +181,20 @@ async fn handle_command(
       bot
         .send_message(
           msg.chat.id,
-          "Local image search has been disabled! I will only search for images online.",
+          "Mygo mode has been disabled! I will only search for images online.",
         )
         .await?;
     }
     "/status" => {
-      let local_search_enabled = {
+      let mygo_enabled = {
         let settings = chat_settings.lock().await;
-        *settings.get(&msg.chat.id).unwrap_or(&true)
+        *settings.get(&msg.chat.id).unwrap_or(&false)
       };
 
-      let status_message = if local_search_enabled {
-        "Local image search is currently enabled."
+      let status_message = if mygo_enabled {
+        "Mygo mode is currently enabled."
       } else {
-        "Local image search is currently disabled."
+        "Mygo mode is currently disabled."
       };
 
       bot.send_message(msg.chat.id, status_message).await?;

@@ -22,63 +22,8 @@ pub async fn find_local_image(text: &str) -> Result<Option<PathBuf>, anyhow::Err
   // Store potential matches with their scores
   let mut matches: Vec<(PathBuf, usize)> = Vec::new();
 
-  // Traverse all subdirectories in the assets directory
-  for entry in fs::read_dir(assets_dir)? {
-    let entry = entry?;
-    let path = entry.path();
-
-    if path.is_dir() {
-      // Traverse all files in the subdirectory
-      for file_entry in fs::read_dir(&path)? {
-        let file_entry = file_entry?;
-        let file_path = file_entry.path();
-
-        if file_path.is_file() {
-          if let Some(file_name) = file_path.file_name() {
-            if let Some(_file_name_str) = file_name.to_str() {
-              // Get the file name without extension
-              let file_stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-
-              if !file_stem.is_empty() {
-                // Normalize the file name for fuzzy matching
-                let normalized_file_stem = normalize_text(file_stem);
-
-                // Exact match - highest priority
-                if normalized_text.contains(&normalized_file_stem)
-                  || normalized_file_stem.contains(&normalized_text)
-                {
-                  // Calculate match score (higher is better)
-                  let score = calculate_match_score(&normalized_text, &normalized_file_stem);
-                  matches.push((file_path.clone(), score));
-                }
-                // Fuzzy match - check if words in the file name appear in the text
-                else {
-                  let file_words: Vec<&str> = normalized_file_stem.split_whitespace().collect();
-                  let text_words: Vec<&str> = normalized_text.split_whitespace().collect();
-
-                  let mut word_matches = 0;
-                  for file_word in &file_words {
-                    if text_words.iter().any(|&text_word| {
-                      text_word.contains(file_word) || file_word.contains(text_word)
-                    }) {
-                      word_matches += 1;
-                    }
-                  }
-
-                  // If we have at least one word match
-                  if word_matches > 0 {
-                    // Calculate score based on percentage of words matched
-                    let score = (word_matches * 100) / file_words.len().max(1);
-                    matches.push((file_path.clone(), score));
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  // Collect all image files from the assets directory and its subdirectories
+  collect_potential_matches(assets_dir, &normalized_text, &mut matches)?;
 
   // Sort matches by score (highest first)
   matches.sort_by(|a, b| b.1.cmp(&a.1));
@@ -90,6 +35,99 @@ pub async fn find_local_image(text: &str) -> Result<Option<PathBuf>, anyhow::Err
   }
 
   Ok(None)
+}
+
+// Helper function to collect potential matches from the assets directory
+fn collect_potential_matches(
+  dir: &Path,
+  normalized_text: &str,
+  matches: &mut Vec<(PathBuf, usize)>,
+) -> Result<(), anyhow::Error> {
+  for entry in fs::read_dir(dir)? {
+    let entry = entry?;
+    let path = entry.path();
+
+    if path.is_dir() {
+      // Recursively process subdirectories
+      collect_potential_matches(&path, normalized_text, matches)?;
+    } else if path.is_file() {
+      process_file(&path, normalized_text, matches);
+    }
+  }
+
+  Ok(())
+}
+
+// Process a single file to check if it matches the search text
+fn process_file(file_path: &Path, normalized_text: &str, matches: &mut Vec<(PathBuf, usize)>) {
+  // Get the file name without extension
+  let file_stem = match file_path.file_stem().and_then(|s| s.to_str()) {
+    Some(stem) if !stem.is_empty() => stem,
+    _ => return, // Skip files with no valid stem
+  };
+
+  // Normalize the file name for matching
+  let normalized_file_stem = normalize_text(file_stem);
+
+  // Special handling for short file names (less than 3 characters)
+  if normalized_file_stem.chars().count() < 3 {
+    handle_short_filename(file_path, normalized_text, &normalized_file_stem, matches);
+  } else {
+    handle_normal_filename(file_path, normalized_text, &normalized_file_stem, matches);
+  }
+}
+
+// Handle short filenames (less than 3 characters)
+fn handle_short_filename(
+  file_path: &Path,
+  normalized_text: &str,
+  normalized_file_stem: &str,
+  matches: &mut Vec<(PathBuf, usize)>,
+) {
+  // For short file names, require exact match with the entire input text
+  if normalized_text == normalized_file_stem {
+    // Give a very high score for exact matches of short file names
+    matches.push((file_path.to_path_buf(), 2000));
+  }
+}
+
+// Handle normal length filenames (3 or more characters)
+fn handle_normal_filename(
+  file_path: &Path,
+  normalized_text: &str,
+  normalized_file_stem: &str,
+  matches: &mut Vec<(PathBuf, usize)>,
+) {
+  // Check for containment match
+  if normalized_text.contains(normalized_file_stem)
+    || normalized_file_stem.contains(normalized_text)
+  {
+    // Calculate match score (higher is better)
+    let score = calculate_match_score(normalized_text, normalized_file_stem);
+    matches.push((file_path.to_path_buf(), score));
+    return;
+  }
+
+  // Try fuzzy matching if no containment match
+  let file_words: Vec<&str> = normalized_file_stem.split_whitespace().collect();
+  let text_words: Vec<&str> = normalized_text.split_whitespace().collect();
+
+  let mut word_matches = 0;
+  for file_word in &file_words {
+    if text_words
+      .iter()
+      .any(|&text_word| text_word.contains(file_word) || file_word.contains(text_word))
+    {
+      word_matches += 1;
+    }
+  }
+
+  // If we have at least one word match
+  if word_matches > 0 {
+    // Calculate score based on percentage of words matched
+    let score = (word_matches * 100) / file_words.len().max(1);
+    matches.push((file_path.to_path_buf(), score));
+  }
 }
 
 // Helper function to normalize text for better matching

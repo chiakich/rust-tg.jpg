@@ -13,13 +13,13 @@ Try tg.jpg! It's like Google's "I'm Feeling Lucky" but for images, this bot will
 - Listens for messages containing image file names (e.g., `example.jpg`, `example.png`, `example.gif`).
 - Searches for images on Google and sends the first result back to the user.
 - Supports both regular images and GIFs.
-- Support using /src/assets image first. (Good for MYGO!! meme pics)
+- [New] MyGo mode! Support using local /src/assets image. (Good for MYGO!! meme pics)
 
 ## Commands
 
 - `/start` - Display welcome message and available commands
-- `/enable_local` - Enable local image search
-- `/disable_local` - Disable local image search
+- `/enable_mygo` - Enable local image search
+- `/disable_mygo` - Disable local image search
 - `/status` - Check current settings
 
 ## Prerequisites
