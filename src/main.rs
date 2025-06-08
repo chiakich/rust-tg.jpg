@@ -16,6 +16,10 @@ use local_image_finder::find_local_image;
 mod google_image_searcher;
 use google_image_searcher::search as google_image_search;
 
+// Import the Imgur handler module
+mod imgur_handler;
+use imgur_handler::{download_imgur_image, is_imgur_url};
+
 // Import the inline query handler module
 mod inline_query_handler;
 use inline_query_handler::{handle_chosen_inline_result, handle_inline_query};
@@ -109,22 +113,41 @@ async fn message_handler(
   let image_urls = google_image_search(query, is_gif).await?;
 
   for image_url in image_urls.iter() {
-    let parsed_url = match Url::parse(image_url) {
-      Ok(url) => url,
-      Err(_) => {
-        error!("Failed to parse URL: {}", image_url);
-        continue;
+    let result = if is_imgur_url(image_url) {
+      // Download imgur image and send as file
+      match download_imgur_image(image_url).await {
+        Ok(data) => {
+          let input_file = InputFile::memory(data);
+          if is_gif {
+            bot.send_animation(msg.chat.id, input_file).await
+          } else {
+            bot.send_photo(msg.chat.id, input_file).await
+          }
+        }
+        Err(e) => {
+          error!("Failed to download imgur image {}: {:?}", image_url, e);
+          continue;
+        }
       }
-    };
-
-    let result = if is_gif {
-      bot
-        .send_animation(msg.chat.id, InputFile::url(parsed_url))
-        .await
     } else {
-      bot
-        .send_photo(msg.chat.id, InputFile::url(parsed_url))
-        .await
+      // Use URL for non-imgur images
+      let parsed_url = match Url::parse(image_url) {
+        Ok(url) => url,
+        Err(_) => {
+          error!("Failed to parse URL: {}", image_url);
+          continue;
+        }
+      };
+
+      if is_gif {
+        bot
+          .send_animation(msg.chat.id, InputFile::url(parsed_url))
+          .await
+      } else {
+        bot
+          .send_photo(msg.chat.id, InputFile::url(parsed_url))
+          .await
+      }
     };
 
     match result {
