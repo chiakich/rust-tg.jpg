@@ -1,13 +1,15 @@
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use reqwest::Client;
+use std::collections::HashSet;
 
 // Search for images using Google Image Search
 pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Error> {
   let endpoint = "https://www.google.com/search";
   let tbs = if is_gif { "ift:gif" } else { "ift:jpg" };
 
-  let params = [("q", query), ("tbs", tbs), ("tbm", "isch"), ("hl", "zh-TW")];
+  // udm=2 is Google's current image search format (tbm=isch is deprecated and redirects to udm=2)
+  let params = [("q", query), ("tbs", tbs), ("hl", "zh-TW"), ("udm", "2")];
 
   info!(
     "Searching Google Images for query: '{}', is_gif: {}",
@@ -56,6 +58,12 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
       "HTML sample (first 2000 chars): {}",
       &html.chars().take(2000).collect::<String>()
     );
+    // Write full HTML to /tmp for post-mortem debugging on server
+    if let Err(e) = std::fs::write("/tmp/google_search_debug.html", bytes.as_ref()) {
+      warn!("Could not write debug HTML to /tmp: {}", e);
+    } else {
+      info!("Wrote full HTML response to /tmp/google_search_debug.html for debugging");
+    }
     return Err(anyhow::anyhow!(
       "Img array is empty. It might be because Google changed the search html format."
     ));
@@ -67,14 +75,17 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
 // Extract image URLs from Google search results HTML
 fn extract_image_urls(text: &str) -> Vec<String> {
   let mut urls = Vec::new();
+  let mut seen = HashSet::new();
 
-  // Try method 1: JSON-formatted image data (for Mobile Safari format)
+  // Try method 1: JSON-formatted image data (udm=2 format)
   // Pattern: ["https://...image.jpg", width, height]
+  // In this JSON structure, each image entry looks like:
+  //   [thumbnail_url, th_h, th_w], [original_url, orig_h, orig_w]
+  // We capture the original-size URL (not encrypted-tbn thumbnails)
   let json_img_regex =
     regex::Regex::new(r#"\["(https?://[^"]+\.(?:jpg|jpeg|png|gif)[^"]*)"\s*,\s*\d+\s*,\s*\d+\]"#)
       .unwrap();
 
-  // Use iterator directly without collecting - stops as soon as we have enough
   for cap in json_img_regex.captures_iter(text) {
     if urls.len() >= 10 {
       break; // Early termination once we have enough URLs
@@ -89,8 +100,11 @@ fn extract_image_urls(text: &str) -> Vec<String> {
       {
         // Decode unicode escapes if any
         let url = url_str.replace("\\u0026", "&").replace("\\u003d", "=");
-        debug!("Extracted URL (method 1): {}", url);
-        urls.push(url);
+        // Deduplicate: Google embeds the same JSON data multiple times in the page
+        if seen.insert(url.clone()) {
+          debug!("Extracted URL (method 1): {}", url);
+          urls.push(url);
+        }
       }
     }
   }
@@ -116,8 +130,10 @@ fn extract_image_urls(text: &str) -> Vec<String> {
           && !url_str.contains("googlelogo")
         {
           let url = url_str.replace("\\u0026", "&").replace("\\u003d", "=");
-          debug!("Extracted URL (method 2): {}", url);
-          urls.push(url);
+          if seen.insert(url.clone()) {
+            debug!("Extracted URL (method 2): {}", url);
+            urls.push(url);
+          }
         }
       }
     }
