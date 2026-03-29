@@ -5,9 +5,9 @@ use teloxide::prelude::*;
 use teloxide::types::InputFile;
 use url::Url;
 
-// Import the DDG image search module
-mod ddg_image_searcher;
-use ddg_image_searcher::search as image_search;
+// Import the Bing image search module
+mod bing_image_searcher;
+use bing_image_searcher::search as image_search;
 
 // Import the Imgur handler module
 mod imgur_handler;

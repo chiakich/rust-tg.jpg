@@ -8,7 +8,7 @@ use teloxide::types::{
 use url::Url;
 use uuid::Uuid;
 
-use crate::ddg_image_searcher::search as image_search;
+use crate::bing_image_searcher::search as image_search;
 
 // Handle inline queries
 pub async fn handle_inline_query(bot: Bot, q: InlineQuery) -> Result<(), anyhow::Error> {
