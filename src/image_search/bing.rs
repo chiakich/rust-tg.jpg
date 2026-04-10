@@ -70,10 +70,6 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, SearchErro
 
   if is_blocked(status, &html) {
     error!("Bing image search was blocked or challenged.");
-    error!(
-      "HTML sample (first 2000 chars): {}",
-      &html.chars().take(2000).collect::<String>()
-    );
     write_debug_html("/tmp/bing_search_debug.html", bytes.as_ref());
     return Err(SearchError::Blocked {
       engine: "Bing",
@@ -83,11 +79,7 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, SearchErro
 
   let urls = extract_image_urls(&html);
   if urls.is_empty() {
-    error!("Failed to extract any image URLs. This likely means Bing changed their HTML format.");
-    error!(
-      "HTML sample (first 2000 chars): {}",
-      &html.chars().take(2000).collect::<String>()
-    );
+    error!("Bing image search returned no parseable image URLs.");
     write_debug_html("/tmp/bing_search_debug.html", bytes.as_ref());
     return Err(SearchError::ParseFailed {
       engine: "Bing",

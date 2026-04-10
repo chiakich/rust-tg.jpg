@@ -3,12 +3,35 @@ use log::{info, warn};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
+use std::sync::OnceLock;
 
 pub mod bing;
 pub mod ddg;
 pub mod google;
+pub mod serpapi;
 
 pub(crate) const MAX_RESULTS: usize = 10;
+const HEALTH_CHECK_QUERY: &str = "cat";
+static ENABLED_ENGINES: OnceLock<Vec<SearchEngine>> = OnceLock::new();
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SearchEngine {
+  Google,
+  SerpApi,
+  Ddg,
+  Bing,
+}
+
+impl SearchEngine {
+  fn label(self) -> &'static str {
+    match self {
+      SearchEngine::Google => "Google",
+      SearchEngine::SerpApi => "SerpAPI",
+      SearchEngine::Ddg => "DDG",
+      SearchEngine::Bing => "Bing",
+    }
+  }
+}
 
 #[derive(Debug)]
 pub enum SearchError {
@@ -48,11 +71,68 @@ impl fmt::Display for SearchError {
 
 impl Error for SearchError {}
 
+pub async fn initialize() {
+  if ENABLED_ENGINES.get().is_some() {
+    return;
+  }
+
+  let serpapi_enabled = serpapi::is_configured();
+  if serpapi_enabled {
+    info!("SERP_API detected; SerpAPI image search will be health-checked.");
+  } else {
+    info!("SERP_API not set; SerpAPI image search is disabled.");
+  }
+
+  let (google_result, serpapi_result, ddg_result, bing_result) = tokio::join!(
+    google::search(HEALTH_CHECK_QUERY, false),
+    run_optional_search(
+      serpapi_enabled,
+      SearchEngine::SerpApi,
+      HEALTH_CHECK_QUERY,
+      false
+    ),
+    ddg::search(HEALTH_CHECK_QUERY, false),
+    bing::search(HEALTH_CHECK_QUERY, false)
+  );
+
+  let mut enabled = Vec::new();
+  update_health(&mut enabled, SearchEngine::Google, google_result);
+  update_health_optional(&mut enabled, SearchEngine::SerpApi, serpapi_result);
+  update_health(&mut enabled, SearchEngine::Ddg, ddg_result);
+  update_health(&mut enabled, SearchEngine::Bing, bing_result);
+
+  if enabled.is_empty() {
+    warn!("No image search engines passed the startup health check.");
+  } else {
+    info!(
+      "Enabled image search engines: {}",
+      enabled
+        .iter()
+        .map(|engine| engine.label())
+        .collect::<Vec<_>>()
+        .join(", ")
+    );
+  }
+
+  let _ = ENABLED_ENGINES.set(enabled);
+}
+
 pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Error> {
-  let (google_result, ddg_result, bing_result) = tokio::join!(
-    google::search(query, is_gif),
-    ddg::search(query, is_gif),
-    bing::search(query, is_gif)
+  let enabled = ENABLED_ENGINES
+    .get()
+    .cloned()
+    .unwrap_or_else(default_engines);
+
+  let use_google = enabled.contains(&SearchEngine::Google);
+  let use_serpapi = enabled.contains(&SearchEngine::SerpApi);
+  let use_ddg = enabled.contains(&SearchEngine::Ddg);
+  let use_bing = enabled.contains(&SearchEngine::Bing);
+
+  let (google_result, serpapi_result, ddg_result, bing_result) = tokio::join!(
+    run_optional_search(use_google, SearchEngine::Google, query, is_gif),
+    run_optional_search(use_serpapi, SearchEngine::SerpApi, query, is_gif),
+    run_optional_search(use_ddg, SearchEngine::Ddg, query, is_gif),
+    run_optional_search(use_bing, SearchEngine::Bing, query, is_gif)
   );
 
   let mut combined = Vec::new();
@@ -63,6 +143,14 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
   merge_results(
     "Google",
     google_result,
+    &mut combined,
+    &mut seen,
+    &mut had_success,
+    &mut errors,
+  );
+  merge_results(
+    "SerpAPI",
+    serpapi_result,
     &mut combined,
     &mut seen,
     &mut had_success,
@@ -88,15 +176,18 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
   if combined.is_empty() {
     if had_success {
       return Err(anyhow!(
-        "All search engines completed but returned no image URLs."
+        "All enabled search engines completed but returned no image URLs."
       ));
     }
 
-    return Err(anyhow!("All search engines failed: {}", errors.join(" | ")));
+    return Err(anyhow!(
+      "All enabled search engines failed: {}",
+      errors.join(" | ")
+    ));
   }
 
   info!(
-    "Combined image search returned {} URLs for query '{}' with priority Google -> DDG -> Bing",
+    "Combined image search returned {} URLs for query '{}'",
     combined.len(),
     query
   );
@@ -105,12 +196,16 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
 
 fn merge_results(
   source: &str,
-  result: std::result::Result<Vec<String>, SearchError>,
+  result: Option<std::result::Result<Vec<String>, SearchError>>,
   combined: &mut Vec<String>,
   seen: &mut HashSet<String>,
   had_success: &mut bool,
   errors: &mut Vec<String>,
 ) {
+  let Some(result) = result else {
+    return;
+  };
+
   match result {
     Ok(urls) => {
       *had_success = true;
@@ -127,8 +222,59 @@ fn merge_results(
       }
     }
     Err(err) => {
-      warn!("{} image search failed: {:?}", source, err);
+      warn!("{} image search failed: {}", source, err);
       errors.push(format!("{}: {}", source, err));
     }
+  }
+}
+
+fn default_engines() -> Vec<SearchEngine> {
+  let mut engines = vec![SearchEngine::Google, SearchEngine::Ddg, SearchEngine::Bing];
+  if serpapi::is_configured() {
+    engines.insert(1, SearchEngine::SerpApi);
+  }
+  engines
+}
+
+async fn run_optional_search(
+  enabled: bool,
+  engine: SearchEngine,
+  query: &str,
+  is_gif: bool,
+) -> Option<std::result::Result<Vec<String>, SearchError>> {
+  if !enabled {
+    return None;
+  }
+
+  Some(match engine {
+    SearchEngine::Google => google::search(query, is_gif).await,
+    SearchEngine::SerpApi => serpapi::search(query, is_gif).await,
+    SearchEngine::Ddg => ddg::search(query, is_gif).await,
+    SearchEngine::Bing => bing::search(query, is_gif).await,
+  })
+}
+
+fn update_health(
+  enabled: &mut Vec<SearchEngine>,
+  engine: SearchEngine,
+  result: std::result::Result<Vec<String>, SearchError>,
+) {
+  match result {
+    Ok(urls) if !urls.is_empty() => {
+      info!("Health check passed: {}", engine.label());
+      enabled.push(engine);
+    }
+    Ok(_) => warn!("Health check failed: {} returned no URLs", engine.label()),
+    Err(err) => warn!("Health check failed: {} ({})", engine.label(), err),
+  }
+}
+
+fn update_health_optional(
+  enabled: &mut Vec<SearchEngine>,
+  engine: SearchEngine,
+  result: Option<std::result::Result<Vec<String>, SearchError>>,
+) {
+  if let Some(result) = result {
+    update_health(enabled, engine, result);
   }
 }

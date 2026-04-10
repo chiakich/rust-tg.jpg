@@ -73,10 +73,6 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, SearchErro
 
   if is_blocked_i_js(status, &body) {
     error!("DuckDuckGo image search was blocked or rate-limited.");
-    error!(
-      "Response sample (first 2000 chars): {}",
-      &body.chars().take(2000).collect::<String>()
-    );
     write_debug_file("/tmp/ddg_search_debug.json", body.as_bytes(), "debug JSON");
     return Err(SearchError::Blocked {
       engine: "DDG",
@@ -127,10 +123,6 @@ async fn fetch_vqd(client: &Client, query: &str) -> Result<String, SearchError> 
 
   if is_blocked_search_page(status, &html) {
     error!("DuckDuckGo search page was blocked or did not return a usable token.");
-    error!(
-      "HTML sample: {}",
-      &html.chars().take(2000).collect::<String>()
-    );
     write_debug_file("/tmp/ddg_vqd_debug.html", html.as_bytes(), "vqd debug HTML");
     return Err(SearchError::Blocked {
       engine: "DDG",
@@ -154,10 +146,7 @@ async fn fetch_vqd(client: &Client, query: &str) -> Result<String, SearchError> 
     }
   }
 
-  error!(
-    "Could not find vqd token. HTML sample: {}",
-    &html.chars().take(2000).collect::<String>()
-  );
+  error!("Could not find a DDG vqd token in the search page.");
   write_debug_file("/tmp/ddg_vqd_debug.html", html.as_bytes(), "vqd debug HTML");
   Err(SearchError::ParseFailed {
     engine: "DDG",

@@ -3,7 +3,7 @@ use log::{error, info};
 use regex::Regex;
 use teloxide::prelude::*;
 use teloxide::types::InputFile;
-use tgjpg_rs::image_search::search as image_search;
+use tgjpg_rs::image_search::{initialize as initialize_image_search, search as image_search};
 use tgjpg_rs::imgur_handler::{download_imgur_image, is_imgur_url};
 use tgjpg_rs::inline_query_handler::{handle_chosen_inline_result, handle_inline_query};
 use url::Url;
@@ -12,6 +12,7 @@ use url::Url;
 async fn main() {
   pretty_env_logger::init();
   info!("Starting image search bot...");
+  initialize_image_search().await;
   let bot = Bot::from_env();
 
   let handler = dptree::entry()

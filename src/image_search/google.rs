@@ -67,10 +67,6 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, SearchErro
 
   if is_blocked(status, &final_url, &html) {
     error!("Google image search was blocked or challenged.");
-    error!(
-      "HTML sample (first 2000 chars): {}",
-      &html.chars().take(2000).collect::<String>()
-    );
     write_debug_html("/tmp/google_search_debug.html", bytes.as_ref());
     return Err(SearchError::Blocked {
       engine: "Google",
@@ -80,12 +76,7 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, SearchErro
 
   let urls = extract_image_urls(&html);
   if urls.is_empty() {
-    error!("Failed to extract any image URLs. This likely means Google changed their HTML format.");
-    error!(
-      "HTML sample (first 2000 chars): {}",
-      &html.chars().take(2000).collect::<String>()
-    );
-    // Write full HTML to /tmp for post-mortem debugging on server
+    error!("Google image search returned no parseable image URLs.");
     write_debug_html("/tmp/google_search_debug.html", bytes.as_ref());
     return Err(SearchError::ParseFailed {
       engine: "Google",
