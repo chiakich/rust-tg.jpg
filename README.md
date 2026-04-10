@@ -13,6 +13,7 @@ Try tg.jpg! It's like an "I'm Feeling Lucky" bot for images: send a query like `
 - Listens for messages containing image file names (e.g., `example.jpg`, `example.png`, `example.gif`).
 - Searches across multiple image engines and sends back the first usable result.
 - Supports Google, DuckDuckGo, and Bing scraping backends.
+- Optionally supports [Serper.dev](https://serper.dev/) when `SERPER_API` is configured. (Recommend)
 - Optionally supports [SerpAPI](https://serpapi.com/google-images-api) when `SERP_API` is configured.
 - Runs a startup health check and only enables search engines that pass.
 - Supports both regular images and GIFs.
@@ -43,7 +44,20 @@ $ set TELOXIDE_TOKEN=<Your token here>
 $ $env:TELOXIDE_TOKEN=<Your token here>
 ```
 
-4.  Optional: if you want to enable the SerpAPI image backend, set `SERP_API`:
+4.  Optional: if you want to enable the Serper image backend, set `SERPER_API`:
+
+```bash
+# Unix-like
+$ export SERPER_API=<Your Serper key here>
+
+# Windows command line
+$ set SERPER_API=<Your Serper key here>
+
+# Windows PowerShell
+$ $env:SERPER_API=<Your Serper key here>
+```
+
+5.  Optional: if you want to enable the SerpAPI image backend, set `SERP_API`:
 
 ```bash
 # Unix-like
@@ -56,7 +70,7 @@ $ set SERP_API=<Your SerpAPI key here>
 $ $env:SERP_API=<Your SerpAPI key here>
 ```
 
-5.  Make sure that your Rust compiler is up to date (`teloxide` currently requires rustc at least version 1.80):
+6.  Make sure that your Rust compiler is up to date (`teloxide` currently requires rustc at least version 1.80):
 
 ```bash
 # If you're using stable
@@ -68,7 +82,7 @@ $ rustup update nightly
 $ rustup override set nightly
 ```
 
-6. Build and run the project:
+7. Build and run the project:
 
    ```bash
    cargo run
@@ -78,6 +92,7 @@ $ rustup override set nightly
 
 - Start the bot on Telegram by searching for your bot's username and sending a message with an image file name (e.g., `example.jpg`).
 - On startup, the bot health-checks each configured search engine and only enables the ones that currently work.
+- When `SERPER_API` is set, Serper is included as the highest-priority search backend.
 - When `SERP_API` is set, SerpAPI is included in the search order.
 - The bot will respond with the first possible image result it finds from the enabled backends.
 

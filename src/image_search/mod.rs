@@ -9,6 +9,7 @@ pub mod bing;
 pub mod ddg;
 pub mod google;
 pub mod serpapi;
+pub mod serper;
 
 pub(crate) const MAX_RESULTS: usize = 10;
 const HEALTH_CHECK_QUERY: &str = "cat";
@@ -16,6 +17,7 @@ static ENABLED_ENGINES: OnceLock<Vec<SearchEngine>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SearchEngine {
+  Serper,
   Google,
   SerpApi,
   Ddg,
@@ -25,6 +27,7 @@ enum SearchEngine {
 impl SearchEngine {
   fn label(self) -> &'static str {
     match self {
+      SearchEngine::Serper => "Serper",
       SearchEngine::Google => "Google",
       SearchEngine::SerpApi => "SerpAPI",
       SearchEngine::Ddg => "DDG",
@@ -77,13 +80,25 @@ pub async fn initialize() {
   }
 
   let serpapi_enabled = serpapi::is_configured();
+  let serper_enabled = serper::is_configured();
+  if serper_enabled {
+    info!("SERPER_API detected; Serper image search will be health-checked.");
+  } else {
+    info!("SERPER_API not set; Serper image search is disabled.");
+  }
   if serpapi_enabled {
     info!("SERP_API detected; SerpAPI image search will be health-checked.");
   } else {
     info!("SERP_API not set; SerpAPI image search is disabled.");
   }
 
-  let (google_result, serpapi_result, ddg_result, bing_result) = tokio::join!(
+  let (serper_result, google_result, serpapi_result, ddg_result, bing_result) = tokio::join!(
+    run_optional_search(
+      serper_enabled,
+      SearchEngine::Serper,
+      HEALTH_CHECK_QUERY,
+      false
+    ),
     google::search(HEALTH_CHECK_QUERY, false),
     run_optional_search(
       serpapi_enabled,
@@ -96,6 +111,7 @@ pub async fn initialize() {
   );
 
   let mut enabled = Vec::new();
+  update_health_optional(&mut enabled, SearchEngine::Serper, serper_result);
   update_health(&mut enabled, SearchEngine::Google, google_result);
   update_health_optional(&mut enabled, SearchEngine::SerpApi, serpapi_result);
   update_health(&mut enabled, SearchEngine::Ddg, ddg_result);
@@ -123,12 +139,14 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
     .cloned()
     .unwrap_or_else(default_engines);
 
+  let use_serper = enabled.contains(&SearchEngine::Serper);
   let use_google = enabled.contains(&SearchEngine::Google);
   let use_serpapi = enabled.contains(&SearchEngine::SerpApi);
   let use_ddg = enabled.contains(&SearchEngine::Ddg);
   let use_bing = enabled.contains(&SearchEngine::Bing);
 
-  let (google_result, serpapi_result, ddg_result, bing_result) = tokio::join!(
+  let (serper_result, google_result, serpapi_result, ddg_result, bing_result) = tokio::join!(
+    run_optional_search(use_serper, SearchEngine::Serper, query, is_gif),
     run_optional_search(use_google, SearchEngine::Google, query, is_gif),
     run_optional_search(use_serpapi, SearchEngine::SerpApi, query, is_gif),
     run_optional_search(use_ddg, SearchEngine::Ddg, query, is_gif),
@@ -140,6 +158,14 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
   let mut had_success = false;
   let mut errors = Vec::new();
 
+  merge_results(
+    "Serper",
+    serper_result,
+    &mut combined,
+    &mut seen,
+    &mut had_success,
+    &mut errors,
+  );
   merge_results(
     "Google",
     google_result,
@@ -230,8 +256,12 @@ fn merge_results(
 
 fn default_engines() -> Vec<SearchEngine> {
   let mut engines = vec![SearchEngine::Google, SearchEngine::Ddg, SearchEngine::Bing];
+  if serper::is_configured() {
+    engines.insert(0, SearchEngine::Serper);
+  }
   if serpapi::is_configured() {
-    engines.insert(1, SearchEngine::SerpApi);
+    let insert_index = if serper::is_configured() { 2 } else { 1 };
+    engines.insert(insert_index, SearchEngine::SerpApi);
   }
   engines
 }
@@ -247,6 +277,7 @@ async fn run_optional_search(
   }
 
   Some(match engine {
+    SearchEngine::Serper => serper::search(query, is_gif).await,
     SearchEngine::Google => google::search(query, is_gif).await,
     SearchEngine::SerpApi => serpapi::search(query, is_gif).await,
     SearchEngine::Ddg => ddg::search(query, is_gif).await,
