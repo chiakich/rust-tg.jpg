@@ -48,7 +48,10 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
   info!("i.js response status: {}", res.status());
 
   let body = res.text().await?;
-  debug!("i.js response (first 500 chars): {}", &body.chars().take(500).collect::<String>());
+  debug!(
+    "i.js response (first 500 chars): {}",
+    &body.chars().take(500).collect::<String>()
+  );
 
   let urls = extract_image_urls(&body);
 
@@ -118,7 +121,9 @@ async fn fetch_vqd(client: &Client, query: &str) -> Result<String> {
   if let Err(e) = std::fs::write("/tmp/ddg_vqd_debug.html", html.as_bytes()) {
     warn!("Could not write vqd debug HTML: {}", e);
   }
-  Err(anyhow::anyhow!("Could not extract vqd token from DuckDuckGo search page"))
+  Err(anyhow::anyhow!(
+    "Could not extract vqd token from DuckDuckGo search page"
+  ))
 }
 
 // Extract image URLs from the DDG i.js JSON response
@@ -133,7 +138,10 @@ fn extract_image_urls(json: &str) -> Vec<String> {
       break;
     }
     if let Some(url_match) = cap.get(1) {
-      let url = url_match.as_str().replace("\\u0026", "&").replace("\\u003d", "=");
+      let url = url_match
+        .as_str()
+        .replace("\\u0026", "&")
+        .replace("\\u003d", "=");
       debug!("Extracted URL: {}", url);
       urls.push(url);
     }

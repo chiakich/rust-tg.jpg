@@ -8,7 +8,7 @@ use teloxide::types::{
 use url::Url;
 use uuid::Uuid;
 
-use crate::bing_image_searcher::search as image_search;
+use crate::image_search::search as image_search;
 
 // Handle inline queries
 pub async fn handle_inline_query(bot: Bot, q: InlineQuery) -> Result<(), anyhow::Error> {
@@ -25,9 +25,25 @@ pub async fn handle_inline_query(bot: Bot, q: InlineQuery) -> Result<(), anyhow:
 
   // Detect if the user wants GIFs (query ends with .gif)
   let (search_query, is_gif) = if query.to_lowercase().ends_with(".gif") {
-    (query.trim_end_matches(|c: char| c == '.' || c.is_alphabetic()).trim().to_string(), true)
+    (
+      query
+        .trim_end_matches(|c: char| c == '.' || c.is_alphabetic())
+        .trim()
+        .to_string(),
+      true,
+    )
   } else {
-    (query.trim_end_matches(|c: char| c == '.' || c.is_alphabetic() && query.to_lowercase().ends_with(".jpg") || c.is_alphabetic() && query.to_lowercase().ends_with(".png")).trim().to_string(), false)
+    (
+      query
+        .trim_end_matches(|c: char| {
+          c == '.'
+            || c.is_alphabetic() && query.to_lowercase().ends_with(".jpg")
+            || c.is_alphabetic() && query.to_lowercase().ends_with(".png")
+        })
+        .trim()
+        .to_string(),
+      false,
+    )
   };
 
   // Strip common image extensions from the search query
@@ -38,11 +54,19 @@ pub async fn handle_inline_query(bot: Bot, q: InlineQuery) -> Result<(), anyhow:
     .trim_end_matches(".gif")
     .trim()
     .to_string();
-  let search_query = if search_query.is_empty() { query.clone() } else { search_query };
+  let search_query = if search_query.is_empty() {
+    query.clone()
+  } else {
+    search_query
+  };
 
   let image_urls = match image_search(&search_query, is_gif).await {
     Ok(urls) => {
-      info!("Found {} image URLs for query: {}", urls.len(), search_query);
+      info!(
+        "Found {} image URLs for query: {}",
+        urls.len(),
+        search_query
+      );
       urls
     }
     Err(e) => {

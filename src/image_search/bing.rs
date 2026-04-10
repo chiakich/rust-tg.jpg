@@ -14,7 +14,12 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
     "+filterui:photo-photo"
   };
 
-  let params = [("q", query), ("form", "HDRSC2"), ("first", "1"), ("qft", qft)];
+  let params = [
+    ("q", query),
+    ("form", "HDRSC2"),
+    ("first", "1"),
+    ("qft", qft),
+  ];
 
   info!(
     "Searching Bing Images for query: '{}', is_gif: {}",
@@ -78,8 +83,7 @@ fn extract_image_urls(text: &str) -> Vec<String> {
 
   // Method 1: iusc anchor tag with HTML-encoded JSON m attribute
   // <a class="iusc" ... m="{&quot;murl&quot;:&quot;https://...&quot;,...}">
-  let iusc_regex =
-    regex::Regex::new(r#"<a[^>]+class="iusc"[^>]+m="(\{[^"]+\})"[^>]*>"#).unwrap();
+  let iusc_regex = regex::Regex::new(r#"<a[^>]+class="iusc"[^>]+m="(\{[^"]+\})"[^>]*>"#).unwrap();
 
   for cap in iusc_regex.captures_iter(text) {
     if urls.len() >= 10 {

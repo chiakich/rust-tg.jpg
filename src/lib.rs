@@ -1,4 +1,3 @@
-// Public modules for testing
-pub mod google_image_searcher;
-pub mod bing_image_searcher;
-pub mod ddg_image_searcher;
+pub mod image_search;
+pub mod imgur_handler;
+pub mod inline_query_handler;
