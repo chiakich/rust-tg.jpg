@@ -1,12 +1,52 @@
 use anyhow::{anyhow, Result};
 use log::{info, warn};
 use std::collections::HashSet;
+use std::error::Error;
+use std::fmt;
 
 pub mod bing;
 pub mod ddg;
 pub mod google;
 
-const MAX_RESULTS: usize = 10;
+pub(crate) const MAX_RESULTS: usize = 10;
+
+#[derive(Debug)]
+pub enum SearchError {
+  Blocked {
+    engine: &'static str,
+    details: String,
+  },
+  NoResults {
+    engine: &'static str,
+  },
+  ParseFailed {
+    engine: &'static str,
+    details: String,
+  },
+  NetworkFailed {
+    engine: &'static str,
+    details: String,
+  },
+}
+
+impl fmt::Display for SearchError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      SearchError::Blocked { engine, details } => {
+        write!(f, "{} blocked: {}", engine, details)
+      }
+      SearchError::NoResults { engine } => write!(f, "{} returned no results", engine),
+      SearchError::ParseFailed { engine, details } => {
+        write!(f, "{} parse failed: {}", engine, details)
+      }
+      SearchError::NetworkFailed { engine, details } => {
+        write!(f, "{} network failed: {}", engine, details)
+      }
+    }
+  }
+}
+
+impl Error for SearchError {}
 
 pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Error> {
   let (google_result, ddg_result, bing_result) = tokio::join!(
@@ -65,7 +105,7 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
 
 fn merge_results(
   source: &str,
-  result: Result<Vec<String>, anyhow::Error>,
+  result: std::result::Result<Vec<String>, SearchError>,
   combined: &mut Vec<String>,
   seen: &mut HashSet<String>,
   had_success: &mut bool,

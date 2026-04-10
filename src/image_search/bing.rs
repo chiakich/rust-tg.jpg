@@ -1,10 +1,12 @@
-use anyhow::Result;
 use log::{debug, error, info, warn};
 use reqwest::Client;
+use reqwest::StatusCode;
 use std::collections::HashSet;
 
+use crate::image_search::{SearchError, MAX_RESULTS};
+
 // Search for images using Bing Image Search
-pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Error> {
+pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, SearchError> {
   let endpoint = "https://www.bing.com/images/search";
 
   // filterui:photo-animatedgif for GIF, filterui:photo-photo for static images
@@ -41,11 +43,22 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
     .header("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7")
     .header("Referer", "https://www.bing.com/")
     .send()
-    .await?;
+    .await
+    .map_err(|err| SearchError::NetworkFailed {
+      engine: "Bing",
+      details: err.to_string(),
+    })?;
 
-  info!("Received response with status: {}", res.status());
+  let status = res.status();
+  info!("Received response with status: {}", status);
 
-  let bytes = res.bytes().await?;
+  let bytes = res
+    .bytes()
+    .await
+    .map_err(|err| SearchError::NetworkFailed {
+      engine: "Bing",
+      details: err.to_string(),
+    })?;
   info!("HTML response length: {} bytes", bytes.len());
 
   let html = String::from_utf8_lossy(&bytes);
@@ -55,6 +68,19 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
     &html.chars().take(1000).collect::<String>()
   );
 
+  if is_blocked(status, &html) {
+    error!("Bing image search was blocked or challenged.");
+    error!(
+      "HTML sample (first 2000 chars): {}",
+      &html.chars().take(2000).collect::<String>()
+    );
+    write_debug_html("/tmp/bing_search_debug.html", bytes.as_ref());
+    return Err(SearchError::Blocked {
+      engine: "Bing",
+      details: format!("status={}", status),
+    });
+  }
+
   let urls = extract_image_urls(&html);
   if urls.is_empty() {
     error!("Failed to extract any image URLs. This likely means Bing changed their HTML format.");
@@ -62,14 +88,11 @@ pub async fn search(query: &str, is_gif: bool) -> Result<Vec<String>, anyhow::Er
       "HTML sample (first 2000 chars): {}",
       &html.chars().take(2000).collect::<String>()
     );
-    if let Err(e) = std::fs::write("/tmp/bing_search_debug.html", bytes.as_ref()) {
-      warn!("Could not write debug HTML to /tmp: {}", e);
-    } else {
-      info!("Wrote full HTML response to /tmp/bing_search_debug.html for debugging");
-    }
-    return Err(anyhow::anyhow!(
-      "Img array is empty. It might be because Bing changed the search html format."
-    ));
+    write_debug_html("/tmp/bing_search_debug.html", bytes.as_ref());
+    return Err(SearchError::ParseFailed {
+      engine: "Bing",
+      details: "No image URLs extracted from HTML".to_string(),
+    });
   }
   info!("Successfully extracted {} image URLs", urls.len());
   Ok(urls)
@@ -86,7 +109,7 @@ fn extract_image_urls(text: &str) -> Vec<String> {
   let iusc_regex = regex::Regex::new(r#"<a[^>]+class="iusc"[^>]+m="(\{[^"]+\})"[^>]*>"#).unwrap();
 
   for cap in iusc_regex.captures_iter(text) {
-    if urls.len() >= 10 {
+    if urls.len() >= MAX_RESULTS {
       break;
     }
     if let Some(m_match) = cap.get(1) {
@@ -108,7 +131,7 @@ fn extract_image_urls(text: &str) -> Vec<String> {
     let murl_regex = regex::Regex::new(r#""murl"\s*:\s*"(https?://[^"]+)""#).unwrap();
 
     for cap in murl_regex.captures_iter(text) {
-      if urls.len() >= 10 {
+      if urls.len() >= MAX_RESULTS {
         break;
       }
       if let Some(url_match) = cap.get(1) {
@@ -145,5 +168,20 @@ fn extract_murl(json_str: &str) -> Option<String> {
     Some(url.replace("\\u0026", "&").replace("\\u003d", "="))
   } else {
     None
+  }
+}
+
+fn is_blocked(status: StatusCode, html: &str) -> bool {
+  status == StatusCode::TOO_MANY_REQUESTS
+    || status == StatusCode::FORBIDDEN
+    || html.contains("Please verify you are a human")
+    || html.contains("captcha")
+}
+
+fn write_debug_html(path: &str, bytes: &[u8]) {
+  if let Err(e) = std::fs::write(path, bytes) {
+    warn!("Could not write debug HTML to {}: {}", path, e);
+  } else {
+    info!("Wrote full HTML response to {} for debugging", path);
   }
 }
