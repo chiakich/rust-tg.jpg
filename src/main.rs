@@ -38,7 +38,7 @@ async fn message_handler(bot: Bot, msg: Message) -> Result<(), anyhow::Error> {
     return handle_command(&bot, &msg).await;
   }
 
-  let pattern = Regex::new(r"^(.+?)\.((?i)jpg|png|gif)$")?;
+  let pattern = Regex::new(r"^(?!https?://).+?\.(?i:jpg|png|gif)$")?;
   let captures = match pattern.captures(text) {
     Some(c) => c,
     None => return Ok(()),
