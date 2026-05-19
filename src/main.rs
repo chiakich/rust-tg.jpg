@@ -43,7 +43,7 @@ async fn message_handler(bot: Bot, msg: Message) -> Result<(), anyhow::Error> {
     return Ok(());
   }
 
-  let pattern = Regex::new(r"(?i)\.(jpg|png|gif)$")?;
+  let pattern = Regex::new(r"(?i)^(.+)\.(jpg|png|gif)$")?;
   let captures = match pattern.captures(text) {
     Some(c) => c,
     None => return Ok(()),
