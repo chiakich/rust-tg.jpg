@@ -117,7 +117,7 @@ async fn handle_command(bot: &Bot, msg: &Message) -> Result<(), anyhow::Error> {
           msg.chat.id,
           "Welcome! Send me a message like \"cat.jpg\" or \"dog.gif\" to search for images.\n\
            You can also use me in any chat by typing @botname followed by your search term!\n\
-           See https://github.com/akira02/rust-tg.jpg for more information.",
+           See https://github.com/chiakich/rust-tg.jpg for more information.",
         )
         .await?;
     }
