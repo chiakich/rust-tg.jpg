@@ -1,6 +1,6 @@
 # rust-tg.jpg
 
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/akira02/rust-tg.jpg/fly-deploy.yml)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/chiakich/rust-tg.jpg/fly-deploy.yml)
 
 Sometimes words aren't enough to express your emotions, and searching for stickers or GIFs can be a hassle.  
 Try tg.jpg! It's like an "I'm Feeling Lucky" bot for images: send a query like `mic drop.gif`, and it will search multiple image engines and reply with the first usable result it can send.  
